@@ -1,91 +1,157 @@
 const { Client } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
-
 const client = new Client();
 
-client.on('ready', () => {
+client.once('ready', () => {
     console.log('Client is ready!');
 });
 
-client.on('qr', qr => {
+client.on('qr', (qr) => {
     qrcode.generate(qr, { small: true });
 });
 
-client.initialize();
+client.on('auth_failure', (message) => {
+    console.error('Authentication failed:', message);
+});
 
-// Function to handle participant mentions using IDs
+client.on('disconnected', (reason) => {
+    console.log('Client was logged out:', reason);
+});
+
+// Function to get mentions (all participants) in a group
 async function getMentions(chat) {
     let mentions = [];
+    let text = '';
 
-    // Iterate through all participants in the group chat
     for (let participant of chat.participants) {
         try {
             const contact = await client.getContactById(participant.id._serialized);
-            if (typeof contact.id._serialized === 'string') {
-                mentions.push(contact.id._serialized);  // Use the ID string instead of Contact object
-            } else {
-                console.warn(`Skipping invalid participant ID: ${participant.id._serialized}`);
-            }
+            mentions.push(contact); // Collect contact to mention
+            text += `@${contact.id.user} `; // Append contact's ID to the message text
         } catch (error) {
             console.error(`Failed to fetch contact for participant: ${participant.id._serialized}`, error);
         }
     }
-    return mentions;
+
+    return { mentions, text };
+}
+
+function isAdmin(participants, senderId) {
+    // Normalize senderId (it might include a domain like '@g.us' in groups)
+    const normalizedSenderId = senderId.includes('@g.us') ? senderId.split('@')[0] : senderId;
+
+    // Check the list of participants to see if the sender is an admin
+    const senderParticipant = participants.find(participant => 
+        participant.id._serialized.split('@')[0] === normalizedSenderId.split('@')[0]
+    );
+    console.log("Participant details:", senderParticipant);
+    return senderParticipant && senderParticipant.isAdmin;
 }
 
 // Listening to all incoming messages
-client.on('message_create', async (message) => {
+client.on('message', async (message) => {
+    console.log('Received message:', message.body);
+
     try {
-        if (message.body && typeof message.body === 'string') {
-            console.log(message.body);
+        const msg = message.body.toLowerCase();
+        const senderId = message.author || message.from; 
 
-            // Check if the message is from a group
+        // Handle @all command for group mentions
+        if (msg === '@all') {
             const chat = await message.getChat();
+
             if (chat.isGroup) {
-                const sender = await message.getContact();
-                const isAdmin = chat.participants.some(participant => 
-                    participant.id._serialized === sender.id._serialized && participant.isAdmin);
+                // Fetch participants and log for debugging
+                const participants = chat.participants;
+                console.log('Group participants:', participants);
 
-                // Tag all participants when "!tagall" is sent
-                if (message.body.toLowerCase() === '!tagall') {
-                    if (isAdmin) {
-                        const mentions = await getMentions(chat);
+                // Check if the sender is an admin
+                const isSenderAdmin = isAdmin(participants, senderId);
 
-                        if (mentions.length > 0) {
-                            // Send message tagging all participants using their ID strings
-                            await chat.sendMessage('Tagging everyone!', { mentions });
-                        } else {
-                            message.reply('No valid participants found to tag.');
-                        }
+                if (isSenderAdmin) {
+                    const { mentions, text } = await getMentions(chat);
+
+                    if (mentions.length > 0) {
+                        await chat.sendMessage(text, { mentions });
                     } else {
-                        message.reply('bas bhai rehene de');
+                        await message.reply('No valid participants found to tag.');
                     }
-                }
-
-                // Handle the dictatorship command (admin-only mode)
-                if (message.body === '!dictatorship') {
-                    if (isAdmin) {
-                        await chat.setMessagesAdminsOnly(true);
-                        message.reply('Aye aye captain');
-                    } else {
-                        message.reply('Aura kam hai teri lol');
-                    }
-                }
-
-                // Handle the democracy command (allow all messages)
-                if (message.body === '!democracy') {
-                    if (isAdmin) {
-                        await chat.setMessagesAdminsOnly(false);
-                        message.reply('Aye aye captain');
-                    } else {
-                        message.reply('Aura kam hai teri lol');
-                    }
+                } else {
+                    await message.reply('Aura kam hai teri lol');
                 }
             } else {
-                message.reply(' ');
+                await message.reply('This is not a group chat.');
+            }
+        } 
+        // Handle predefined bot responses
+        else if (msg === 'hello') {
+            await message.reply('Ping-Pong!');
+        } else if (msg === 'hamara cr kaun?') {
+            await message.reply('pta nahi');
+        } else if (msg === 'hi') {
+            await message.reply('Chin Tapak Dam Dam!');
+        } else if (msg === 'namaste') {
+            await message.reply('namaste!');
+        } else if (msg === 'cr') {
+            await message.reply('pta nahi');
+        } else if (msg === 'minku') {
+            await message.reply('bol!');
+        } else if (msg === '@minku') {
+            await message.reply('bol!');
+        } else if (msg === 'lol') {
+            await message.reply('🤣');
+        } else if (msg === '!stop!') {
+            client.destroy();
+        } else if (msg === 'who are you?') {
+            await message.reply('Minku');
+        } else if (msg === 'haha') {
+            await message.reply('😂');
+        } else if (msg === 'tu kha hai?') {
+            await message.reply('pichhe');
+        } else if (msg === 'konsi class?') {
+            await message.reply('407');
+        } else if (msg === 'piche kaha?') {
+            await message.reply('piche!');
+        } else if (msg === 'minku how are you') {
+            await message.reply('fully charged up!');
+        } else if (msg === 'captain') {
+            await message.reply('Shankul!');
+        }
+        // Handle admin-only commands: !dictatorship and !democracy
+        else if (msg === '!dictatorship') {
+            const chat = await message.getChat();
+
+            if (chat.isGroup) {
+                const participants = chat.participants;
+                const isSenderAdmin = isAdmin(participants, senderId);
+
+                if (isSenderAdmin) {
+                    await chat.setMessagesAdminsOnly(true);
+                    await message.reply('Aye aye captain');
+                } else {
+                    await message.reply('Bas bhai rehene de');
+                }
+            }
+        } else if (msg === '!democracy') {
+            const chat = await message.getChat();
+
+            if (chat.isGroup) {
+                const participants = chat.participants;
+                const isSenderAdmin = isAdmin(participants, senderId);
+
+                if (isSenderAdmin) {
+                    await chat.setMessagesAdminsOnly(false);
+                    await message.reply('Aye aye captain');
+                } else {
+                    await message.reply('Bas bhai rehene de.');
+                }
             }
         }
+
     } catch (error) {
         console.error('Error in message processing:', error.message);
     }
 });
+
+client.initialize();
+
