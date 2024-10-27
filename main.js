@@ -18,7 +18,6 @@ client.on('disconnected', (reason) => {
     console.log('Client was logged out:', reason);
 });
 
-// Function to get mentions (all participants) in a group
 async function getMentions(chat) {
     let mentions = [];
     let text = '';
@@ -26,8 +25,8 @@ async function getMentions(chat) {
     for (let participant of chat.participants) {
         try {
             const contact = await client.getContactById(participant.id._serialized);
-            mentions.push(contact); // Collect contact to mention
-            text += `@${contact.id.user} `; // Append contact's ID to the message text
+            mentions.push(contact); 
+            text += `@${contact.id.user} `; 
         } catch (error) {
             console.error(`Failed to fetch contact for participant: ${participant.id._serialized}`, error);
         }
@@ -37,10 +36,8 @@ async function getMentions(chat) {
 }
 
 function isAdmin(participants, senderId) {
-    // Normalize senderId (it might include a domain like '@g.us' in groups)
     const normalizedSenderId = senderId.includes('@g.us') ? senderId.split('@')[0] : senderId;
 
-    // Check the list of participants to see if the sender is an admin
     const senderParticipant = participants.find(participant => 
         participant.id._serialized.split('@')[0] === normalizedSenderId.split('@')[0]
     );
@@ -48,7 +45,6 @@ function isAdmin(participants, senderId) {
     return senderParticipant && senderParticipant.isAdmin;
 }
 
-// Listening to all incoming messages
 client.on('message', async (message) => {
     console.log('Received message:', message.body);
 
@@ -56,16 +52,13 @@ client.on('message', async (message) => {
         const msg = message.body.toLowerCase();
         const senderId = message.author || message.from; 
 
-        // Handle @all command for group mentions
         if (msg === '@all') {
             const chat = await message.getChat();
 
             if (chat.isGroup) {
-                // Fetch participants and log for debugging
                 const participants = chat.participants;
                 console.log('Group participants:', participants);
 
-                // Check if the sender is an admin
                 const isSenderAdmin = isAdmin(participants, senderId);
 
                 if (isSenderAdmin) {
@@ -83,7 +76,6 @@ client.on('message', async (message) => {
                 await message.reply('This is not a group chat.');
             }
         } 
-        // Handle predefined bot responses
         else if (msg === 'hello') {
             await message.reply('Ping-Pong!');
         } else if (msg === 'hamara cr kaun?') {
@@ -117,7 +109,6 @@ client.on('message', async (message) => {
         } else if (msg === 'captain') {
             await message.reply('Shankul!');
         }
-        // Handle admin-only commands: !dictatorship and !democracy
         else if (msg === '!dictatorship') {
             const chat = await message.getChat();
 
